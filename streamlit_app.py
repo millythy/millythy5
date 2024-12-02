@@ -49,7 +49,6 @@ def main():
 
 
     def plot_metrics(metrics_list, model, x_test, y_test, y_pred):
-        st.set_option('deprecation.showPyplotGlobalUse', False)
 
 
         if 'Confusion Matrix' in metrics_list:
