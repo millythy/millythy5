@@ -1,151 +1,116 @@
+
+
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
-
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
-)
-
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
-
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
-
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
-
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
-
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
-
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
-
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
-
-    return gdp_df
-
-gdp_df = get_gdp_data()
-
-# -----------------------------------------------------------------------------
-# Draw the actual page
-
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
-
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
-
-# Add some spacing
-''
-''
-
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
-
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
-
-countries = gdp_df['Country Code'].unique()
-
-if not len(countries):
-    st.warning("Select at least one country")
-
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
-
-''
-''
-''
-
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
+import numpy as np
+from sklearn.svm import SVC
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import ConfusionMatrixDisplay, precision_score, recall_score, accuracy_score
 
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
+def main():
+    st.title("Brain Stroke Classification Web App")
+    st.sidebar.title("Brain Stroke Classification Web App")
+    st.markdown("Predict if a person is likely to have a stroke 🧠")
+    st.sidebar.markdown("Predict if a person is likely to have a stroke 🧠")
 
-st.header(f'GDP in {to_year}', divider='gray')
 
-''
+    @st.cache_data(persist=True)
+    def load_data():
+        # Load the brain stroke dataset
+        data = pd.read_csv('brain_stroke.csv')
 
-cols = st.columns(4)
 
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
+        # Handle categorical variables encoding
+        label = LabelEncoder()
+        data['gender'] = label.fit_transform(data['gender'])
+        data['ever_married'] = label.fit_transform(data['ever_married'])
+        data['work_type'] = label.fit_transform(data['work_type'])
+        data['Residence_type'] = label.fit_transform(data['Residence_type'])
+        data['smoking_status'] = label.fit_transform(data['smoking_status'])
 
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
 
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
+        return data
 
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+
+    @st.cache_data(persist=True)
+    def split(df):
+        # Set the target variable (stroke) and features
+        y = df['stroke']
+        X = df.drop(columns=['stroke'])
+
+
+        # Split data into training and test sets
+        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=0)
+        return x_train, x_test, y_train, y_test
+
+
+    def plot_metrics(metrics_list, model, x_test, y_test, y_pred):
+        st.set_option('deprecation.showPyplotGlobalUse', False)
+
+
+        if 'Confusion Matrix' in metrics_list:
+            st.subheader("Confusion Matrix")
+            cm_display = ConfusionMatrixDisplay.from_estimator(
+                model, x_test, y_test, display_labels=['No Stroke', 'Stroke'], cmap="Blues"
+            )
+            cm_display.plot()
+            st.pyplot()
+
+
+    # Load dataset and prepare the data
+    df = load_data()
+
+
+    # Split the data into train and test sets
+    x_train, x_test, y_train, y_test = split(df)
+
+
+    # Sidebar for classifier selection
+    st.sidebar.subheader("Choose Classifier")
+    classifier = st.sidebar.selectbox("Classifier", ("Support Vector Machine (SVM)", "Logistic Regression", "Random Forest"))
+
+
+    # SVM Classifier
+    if classifier == 'Support Vector Machine (SVM)':
+        st.sidebar.subheader("Model Hyperparameters")
+        C = st.sidebar.number_input("C (Regularization parameter)", 0.01, 10.0, step=0.01, key='C')
+        kernel = st.sidebar.radio("Kernel", ("rbf", "linear"), key='kernel')
+        gamma = st.sidebar.radio("Gamma (Kernel Coefficient)", ("scale", "auto"), key='gamma')
+        metrics = st.sidebar.multiselect("What metrics to plot?", ['Confusion Matrix'])
+
+
+        if st.sidebar.button("Classify", key='classify'):
+            st.subheader("SVM Classifier Results")
+            model = SVC(C=C, kernel=kernel, gamma=gamma)
+            model.fit(x_train, y_train)
+            y_pred = model.predict(x_test)
+
+
+            # Calculate metrics
+            accuracy = accuracy_score(y_test, y_pred)
+            precision = precision_score(y_test, y_pred)
+            recall = recall_score(y_test, y_pred)
+
+
+            # Display metrics
+            st.write("Accuracy: ", accuracy.round(2))
+            st.write("Precision: ", precision.round(2))
+            st.write("Recall: ", recall.round(2))
+
+
+            # Plot metrics
+            plot_metrics(metrics, model, x_test, y_test, y_pred)
+
+
+    # Option to display raw data
+    if st.sidebar.checkbox("Show raw data", False):
+        st.subheader("Brain Stroke Dataset")
+        st.write(df)
+
+
+if __name__ == '__main__':
+    main()
