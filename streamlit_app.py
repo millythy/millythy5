@@ -97,9 +97,9 @@ def main():
 
 
             # Display metrics
-            st.write("Accuracy: ", accuracy.round(2))
-            st.write("Precision: ", precision.round(2))
-            st.write("Recall: ", recall.round(2))
+            st.write("Accuracy: ", accuracy)
+            st.write("Precision: ", precision)
+            st.write("Recall: ", recall)
 
 
             # Plot metrics
